@@ -1,29 +1,13 @@
 # leafrun-platform
 
-Planned shared technical packages for authorization clients, reliable messaging and telemetry.
+## Small shared service tools
 
-**Status: planned component.** This repository currently contains its scope and roadmap links. It does not yet provide a runnable service or package. The existing local rendering prototype lives in [leafrun-generation](https://github.com/leafrun/leafrun-generation).
+This planned library will hold technical helpers that multiple services need: authorization clients, message delivery bookkeeping, idempotent consumers, and telemetry. It should keep repeated transport code out of each domain.
 
-## Responsibility
+Access still owns permissions; each service still owns its data and business rules. Platform packages must not turn into a shared domain database.
 
-Versioned technical packages: auth client, outbox/inbox, idempotency and telemetry; no central business rules.
+**Status:** this repository is a planned component. It has no runnable implementation yet. The working local renderer is in [leafrun-generation](https://github.com/leafrun/leafrun-generation).
 
-## Boundaries
+**First roadmap step:** [LEA-25 — Make server jobs reliable](https://linear.app/bulnik/issue/LEA-25/e04-nadyozhnyj-asinhronnyj-servernyj-render). Linear may require workspace access; the public [roadmap](https://github.com/leafrun/leafrun/blob/main/docs/roadmap.md) explains the build order. See the [repository map](https://github.com/leafrun/leafrun/blob/main/docs/repositories.md) and [contribution guide](https://github.com/leafrun/leafrun/blob/main/CONTRIBUTING.md).
 
-This is a versioned library, not a separately deployed service. Consumers pin compatible versions; domain rules and database ownership remain with their owning services.
-
-## Roadmap
-
-- [LEA-25 — Reliable asynchronous server rendering](https://linear.app/bulnik/issue/LEA-25/e04-nadyozhnyj-asinhronnyj-servernyj-render)
-- [LEA-41 — Users, organizations, roles and bots](https://linear.app/bulnik/issue/LEA-41/e06-polzovateli-organizacii-roli-i-boty)
-- [LEA-114 — Caching, operations and scaling](https://linear.app/bulnik/issue/LEA-114/e15-keshirovanie-ekspluataciya-i-masshtabirovanie)
-
-See the [development roadmap](https://github.com/leafrun/leafrun/blob/main/docs/roadmap.md) for dependencies and acceptance milestones. Creating this repository does not complete its implementation issues.
-
-## Contributing
-
-Use English for code comments, documentation, examples, commit messages and pull requests. See the [contribution guide](https://github.com/leafrun/leafrun/blob/main/CONTRIBUTING.md) and [current architecture](https://github.com/leafrun/leafrun/blob/main/docs/architecture.md).
-
-## License status
-
-A project license has not been selected. No license is assigned by this repository scaffold.
+No project license has been selected yet.
