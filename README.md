@@ -156,3 +156,26 @@ go test ./...
 ```
 
 PostgreSQL integration tests run only when `PLATFORM_TEST_DATABASE_URL` points to a dedicated platform test database. They apply the embedded migration and exercise duplicate/lost ACK handling, five failed applications, final-claim crash recovery, replay audit, outbox ACK loss, and retention. They skip when the variable is absent and reject a database named `storage`.
+## E06 authentication and event hierarchy
+
+`authn.NewClient(baseURL, serviceBearer, cookieName, httpClient)` implements the
+technical `Authenticator` and `Checker` interfaces using the versioned Contracts
+client. An empty cookie name selects exactly `ory_kratos_session`; only that
+cookie's opaque value is forwarded. Duplicate Authorization values, caller
+bearer/cookie ambiguity, duplicate session cookies and fixed service credentials
+used as public credentials are rejected before the network call. Remote service
+and dev identities, including the service principal domain, cannot authenticate a
+public caller. Internal checks can still carry authorized service references.
+
+`WithIdentity(ctx, identity)` validates a resolved or durable server identity
+before context propagation; `IdentityFromContext` retrieves that comparable
+value. Neither helper stores caller tokens or trusts public identity headers.
+Authorization policy, databases, explicit development adapters, and current
+authority checks belong to their owners.
+
+Event schema v1 keeps its exact JSON encoding and required workspace/project.
+Schema v2 adds optional organization and supports identity events with no tenant,
+organization-only, organization/workspace, and organization/workspace/project.
+Workspace requires organization; project requires both ancestors. The shared
+Contracts JSON decoder rejects duplicate, trailing, unknown and invalid-Unicode
+input. Existing GenerationCompleted subjects and constructors remain v1.

@@ -3,16 +3,16 @@
 package events
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	jsonvalue "github.com/leafrun/leafrun-contracts/jsonvalue/v1"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 	MaxIdentifierBytes = 256
 	// MaxAggregateVersion is the largest version supported by PostgreSQL bigint.
 	MaxAggregateVersion uint64 = 1<<63 - 1
-	maxEnvelopeBytes           = MaxDataBytes + 8*MaxIdentifierBytes + 4096
+	maxEnvelopeBytes           = MaxDataBytes + 9*MaxIdentifierBytes + 4096
 )
 
 var eventTypePattern = regexp.MustCompile(`^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$`)
@@ -36,6 +36,7 @@ type Envelope struct {
 	Producer         string          `json:"producer"`
 	AggregateID      string          `json:"aggregateId"`
 	AggregateVersion uint64          `json:"aggregateVersion"`
+	OrganizationID   string          `json:"organizationId,omitempty"`
 	WorkspaceID      string          `json:"workspaceId"`
 	ProjectID        string          `json:"projectId"`
 	OccurredAt       time.Time       `json:"occurredAt"`
@@ -47,16 +48,26 @@ type Envelope struct {
 // Validate checks the current envelope version and the bounds required for safe
 // storage, logging, and broker publication.
 func (e Envelope) Validate() error {
-	if e.SchemaVersion != 1 {
-		return fmt.Errorf("schemaVersion must be 1, got %d", e.SchemaVersion)
+	if e.SchemaVersion != 1 && e.SchemaVersion != 2 {
+		return fmt.Errorf("schemaVersion must be 1 or 2, got %d", e.SchemaVersion)
+	}
+	if e.SchemaVersion == 1 && e.OrganizationID != "" {
+		return errors.New("organizationId requires schemaVersion 2")
 	}
 	for name, value := range map[string]string{
 		"eventId": e.EventID, "producer": e.Producer, "aggregateId": e.AggregateID,
-		"workspaceId": e.WorkspaceID, "projectId": e.ProjectID,
 	} {
 		if err := validateIdentifier(name, value, true); err != nil {
 			return err
 		}
+	}
+	for name, value := range map[string]string{"organizationId": e.OrganizationID, "workspaceId": e.WorkspaceID, "projectId": e.ProjectID} {
+		if err := validateIdentifier(name, value, value != "" || e.SchemaVersion == 1 && name != "organizationId"); err != nil {
+			return err
+		}
+	}
+	if e.SchemaVersion == 2 && ((e.WorkspaceID != "" && e.OrganizationID == "") || (e.ProjectID != "" && (e.OrganizationID == "" || e.WorkspaceID == ""))) {
+		return errors.New("invalid event tenant hierarchy")
 	}
 	for name, value := range map[string]string{"correlationId": e.CorrelationID, "causationId": e.CausationID} {
 		if err := validateIdentifier(name, value, false); err != nil {
@@ -74,6 +85,9 @@ func (e Envelope) Validate() error {
 	}
 	if len(e.Data) == 0 || len(e.Data) > MaxDataBytes || !json.Valid(e.Data) || !utf8.Valid(e.Data) {
 		return fmt.Errorf("data must be valid JSON between 1 and %d bytes", MaxDataBytes)
+	}
+	if _, err := jsonvalue.Decode(e.Data, MaxDataBytes); err != nil {
+		return errors.New("data must be strict JSON")
 	}
 	return nil
 }
@@ -129,17 +143,21 @@ func Decode(encoded []byte) (Envelope, error) {
 	if !utf8.Valid(encoded) {
 		return e, errors.New("encoded event envelope contains invalid UTF-8")
 	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&e); err != nil {
-		return e, fmt.Errorf("decode event envelope: %w", err)
+	if err := jsonvalue.Unmarshal(encoded, &e, maxEnvelopeBytes); err != nil {
+		return Envelope{}, fmt.Errorf("decode event envelope: %w", err)
 	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return e, errors.New("decode event envelope: trailing JSON value")
+	if e.SchemaVersion == 1 {
+		// Presence matters for the closed v1 schema, even when an optional Go
+		// string would erase the distinction between absent, empty and null.
+		var fields struct {
+			OrganizationID json.RawMessage `json:"organizationId"`
 		}
-		return e, fmt.Errorf("decode event envelope: %w", err)
+		if err := json.Unmarshal(encoded, &fields); err != nil {
+			return Envelope{}, errors.New("invalid v1 event envelope")
+		}
+		if len(fields.OrganizationID) != 0 {
+			return Envelope{}, errors.New("organizationId requires schemaVersion 2")
+		}
 	}
 	if err := e.Validate(); err != nil {
 		return e, err
